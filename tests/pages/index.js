@@ -1,34 +1,39 @@
-import { useState } from 'react';
+const express = require('express');
+const cors = require('cors');
+const { OpenAI } = require('openai');
+const fs = require('fs');
+const path = require('path');
+require('dotenv').config();
 
-export default function Home() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-  const sendMessage = async () => {
-    const newMessages = [...messages, { role: 'user', content: input }];
-    setMessages(newMessages);
-    setInput('');
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: newMessages }),
+// Load resume content
+const resumePath = path.join(__dirname, 'data', 'anthonyfox_res.md');
+const resume = fs.readFileSync(resumePath, 'utf8');
+
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { messages } = req.body;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        { role: 'system', content: `You are a helpful assistant that answers questions about this resume:\n\n${resume}` },
+        ...messages,
+      ],
     });
 
-    const data = await res.json();
-    setMessages([...newMessages, data.response]);
-  };
+    res.json({ message: response.choices[0].message.content });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to generate response' });
+  }
+});
 
-  return (
-    <div>
-      <h1>Resume Chatbot</h1>
-      <div>
-        {messages.map((msg, idx) => (
-          <div key={idx}><b>{msg.role}:</b> {msg.content}</div>
-        ))}
-      </div>
-      <input value={input} onChange={e => setInput(e.target.value)} />
-      <button onClick={sendMessage}>Send</button>
-    </div>
-  );
-}
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
